@@ -44,6 +44,7 @@ import com.stevdza_san.sprite.component.SpriteView
 import com.stevdza_san.sprite.domain.SpriteSheet
 import com.example.demoshemij.domain.SpriteSpec
 import com.stevdza_san.sprite.domain.SpriteFlip
+import com.stevdza_san.sprite.domain.SpriteState
 import com.stevdza_san.sprite.domain.rememberSpriteState
 import com.stevdza_san.sprite.util.getScreenWidth
 
@@ -211,69 +212,92 @@ fun Test(modifier: Modifier = Modifier){
     }
 }
 @Composable
-fun MovingSpriteAroundScreen(modifier: Modifier=  Modifier) {
+fun MovingSpriteAroundScreen(modifier: Modifier = Modifier) {
     val spriteState = rememberSpriteState(
         totalFrames = 9,
         framesPerRow = 3,
         animationSpeed = 80
     )
 
-    // Tạo spriteSpec như bạn đang dùng
     val spriteSpec = SpriteSpec(
-        screenWidth = /* dùng getScreenWidth().value nếu cần */ 360f,
+        screenWidth = 360f,
         default = SpriteSheet(
-            frameWidth = 253,   // giả sử đây là pixel (theo file sprite)
+            frameWidth = 253,
             frameHeight = 303,
             imageRes = R.drawable.sprite_normal
         )
     )
 
-    BoxWithConstraints() {
-        val maxWidthDp = this.maxWidth      // Dp
-        val maxHeightDp = this.maxHeight    // Dp
+    BoxWithConstraints(  modifier = Modifier
+        .size(150.dp)) {
         val density = LocalDensity.current
+        val densityValue = density.density
 
-        // Chuyển frame kích thước (giả sử frameWidth/Height là px) sang Dp
-        val spriteWidthDp = with(density) { spriteSpec.spriteSheet.frameWidth.toDp() }
-        val spriteHeightDp = with(density) { spriteSpec.spriteSheet.frameHeight.toDp() }
+        // Lấy kích thước màn hình thật (px)
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
 
-        // Tính giới hạn tối đa (lấy value Float của Dp để dùng với Animatable<Float>)
-        val maxX = (maxWidthDp - spriteWidthDp).coerceAtLeast(0.dp).value
-        val maxY = (maxHeightDp - spriteHeightDp).coerceAtLeast(0.dp).value
+        // Kích thước sprite (px)
+        val spriteWidthPx = spriteSpec.spriteSheet.frameWidth.toFloat()
+        val spriteHeightPx = spriteSpec.spriteSheet.frameHeight.toFloat()
+
+        // Giới hạn di chuyển (đảm bảo chạm mép thật)
+        val maxX = (screenWidthPx - spriteWidthPx).coerceAtLeast(0f)
+        val maxY = (screenHeightPx - spriteHeightPx).coerceAtLeast(0f)
 
         val posX = remember { Animatable(0f) }
         val posY = remember { Animatable(0f) }
 
         LaunchedEffect(Unit) {
             spriteState.start()
-//            while (true) {
-//                // Sang phải
-//                posX.animateTo(targetValue = maxX, animationSpec = tween(durationMillis = 7000))
-//                // Xuống dưới (sát mép vì đã trừ spriteHeightDp)
-//                posY.animateTo(targetValue = maxY, animationSpec = tween(durationMillis = 7000))
-//                // Sang trái
-//                posX.animateTo(targetValue = 0f, animationSpec = tween(durationMillis = 7000))
-//                // Lên trên
-//                posY.animateTo(targetValue = 0f, animationSpec = tween(durationMillis = 7000))
-//            }
+            while (true) {
+                // Đi sang phải
+                posX.animateTo(maxX, tween(3000, easing = LinearEasing))
+                // Đi xuống
+                posY.animateTo(maxY, tween(3000, easing = LinearEasing))
+                // Đi sang trái
+                posX.animateTo(0f, tween(3000, easing = LinearEasing))
+                // Đi lên
+                posY.animateTo(0f, tween(3000, easing = LinearEasing))
+            }
         }
-//        Box(
-//            modifier = Modifier
-//                .fillMaxSize()
-//                .pointerInput(Unit) {} // Không intercept event
-//        ) {
-        SpriteView(
-//            modifier = Modifier
-//                .offset(x = posX.value.dp, y = posY.value.dp)
-//                .then(Modifier) // bạn có thể set size chính xác
-//                .size(width = spriteWidthDp, height = spriteHeightDp),
-            spriteState = spriteState,
-            spriteSpec = spriteSpec,
-//                spriteFlip = SpriteFlip.Both
-        )
-//    }
+
+        // Chuyển px → dp để dùng trong offset
+        val offsetXDp = (posX.value / densityValue).dp
+        val offsetYDp = (posY.value / densityValue).dp
+        val spriteWidthDp = (spriteWidthPx / densityValue).dp
+        val spriteHeightDp = (spriteHeightPx / densityValue).dp
+
+        // Bọc Box để nhìn rõ sprite chạm mép
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            SpriteView(
+                modifier = modifier
+                    .offset(x = offsetXDp, y = offsetYDp)
+                    .size(spriteWidthDp, spriteHeightDp),
+                spriteState = spriteState,
+                spriteSpec = spriteSpec
+            )
+        }
     }
 }
+
+@Composable
+fun MovingSprite(
+    spriteState: SpriteState,
+    spriteSpec: SpriteSpec,
+    modifier: Modifier = Modifier
+) {
+    SpriteView(
+        modifier = modifier,
+            // kích thước nhân vật
+        spriteState = spriteState,
+        spriteSpec = spriteSpec
+    )
+}
+
 
 @Composable
 fun MovingSpriteAroundScreen1(modifier: Modifier=  Modifier) {
@@ -328,12 +352,11 @@ fun MovingSpriteAroundScreen1(modifier: Modifier=  Modifier) {
                 .pointerInput(Unit) {} // Không intercept event
         ) {
             SpriteView(
-                modifier = Modifier,
+                modifier = modifier,
                 spriteState = spriteState,
                 spriteSpec = spriteSpec,
 //                spriteFlip = SpriteFlip.Vertical
             )
         }
-
     }
-}
+    }

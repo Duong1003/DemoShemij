@@ -6,10 +6,19 @@ import android.app.NotificationManager
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.util.Log
 import android.view.*
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
@@ -17,7 +26,10 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.demoshemij.domain.SpriteSpec
 import com.example.demoshemij.ui.theme.DemoShemijTheme
+import com.stevdza_san.sprite.domain.SpriteSheet
+import com.stevdza_san.sprite.domain.rememberSpriteState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -77,68 +89,80 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
             setViewTreeSavedStateRegistryOwner(this@FloatingSpriteService)
 
             setContent {
-                DemoShemijTheme {
-                    MovingSpriteAroundScreen()
+                val spriteState = rememberSpriteState(totalFrames = 9, framesPerRow = 3, animationSpeed = 80)
+                val spriteSpec = SpriteSpec(
+                    screenWidth = 360f,
+                    default = SpriteSheet(
+                        frameWidth = 253,
+                        frameHeight = 303,
+                        imageRes = R.drawable.sprite_normal
+                    )
+                )
+                LaunchedEffect(Unit) {
+                    spriteState.start()
                 }
+                MovingSprite(spriteState, spriteSpec)
             }
         }
-
-        val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        else
-            WindowManager.LayoutParams.TYPE_PHONE
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            layoutFlag,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
 
+
+
         params.gravity = Gravity.TOP or Gravity.START
         windowManager.addView(floatingView, params)
 
         // 👇 Xử lý kéo / thả / dừng
-        floatingView.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    isDragging = true
-                    moveJob?.cancel() // Dừng di chuyển tự động
-
-                    initialX = params.x
-                    initialY = params.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    if (isDragging) {
-                        params.x = (initialX + (event.rawX - initialTouchX)).toInt()
-                        params.y = (initialY + (event.rawY - initialTouchY)).toInt()
-                        windowManager.updateViewLayout(floatingView, params)
-                    }
-                    true
-                }
-
-                MotionEvent.ACTION_UP -> {
-                    isDragging = false
-                    // 👇 Khi thả tay: rơi xuống đáy rồi tiếp tục di chuyển
-                    lifecycleScope.launch {
-                        fallDown(params)
-                        animateSpriteWindow(params)
-                    }
-                    true
-                }
-
-                else -> false
-            }
-        }
-
-        // 👉 Bắt đầu chạy tự động
+//        floatingView.setOnTouchListener { _, event ->
+//            when (event.action) {
+//                MotionEvent.ACTION_DOWN -> {
+//                    isDragging = true
+//                    moveJob?.cancel() // Dừng di chuyển tự động
+//                    Log.d("duonghx","ACTION_DOWN")
+//                    initialX = params.x
+//                    initialY = params.y
+//                    initialTouchX = event.rawX
+//                    initialTouchY = event.rawY
+//                    true
+//                }
+//
+//                MotionEvent.ACTION_MOVE -> {
+//                    Log.d("duonghx","ACTION_MOVE")
+//                    if (isDragging) {
+//                        params.x = (initialX + (event.rawX - initialTouchX)).toInt()
+//                        params.y = (initialY + (event.rawY - initialTouchY)).toInt()
+//                        windowManager.updateViewLayout(floatingView, params)
+//                    }
+//                    true
+//                }
+//
+//                MotionEvent.ACTION_UP -> {
+//                    Log.d("duonghx","ACTION_UP")
+//                    isDragging = false
+//                    // 👇 Khi thả tay: rơi xuống đáy rồi tiếp tục di chuyển
+//                    lifecycleScope.launch {
+//                        fallDown(params)
+//                        animateSpriteWindow(params)
+//                    }
+//                    true
+//                }
+//
+//                else -> false
+//            }
+//        }
+//
+//        // 👉 Bắt đầu chạy tự động
         animateSpriteWindow(params)
     }
 
