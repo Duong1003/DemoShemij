@@ -288,13 +288,15 @@ fun MovingSpriteAroundScreen(modifier: Modifier = Modifier) {
 fun MovingSprite(
     spriteState: SpriteState,
     spriteSpec: SpriteSpec,
+    spriteFlip : SpriteFlip?= null,
     modifier: Modifier = Modifier
 ) {
     SpriteView(
         modifier = modifier,
             // kích thước nhân vật
         spriteState = spriteState,
-        spriteSpec = spriteSpec
+        spriteSpec = spriteSpec,
+        spriteFlip = spriteFlip
     )
 }
 

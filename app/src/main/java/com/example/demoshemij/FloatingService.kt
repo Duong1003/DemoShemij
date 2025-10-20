@@ -14,6 +14,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
@@ -28,6 +32,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.demoshemij.domain.SpriteSpec
 import com.example.demoshemij.ui.theme.DemoShemijTheme
+import com.stevdza_san.sprite.domain.SpriteFlip
 import com.stevdza_san.sprite.domain.SpriteSheet
 import com.stevdza_san.sprite.domain.rememberSpriteState
 import kotlinx.coroutines.Job
@@ -79,6 +84,9 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
 
         startForeground(1, notification)
     }
+    companion object {
+        var currentFlipUpdater: ((SpriteFlip?) -> Unit)? = null
+    }
 
     private fun setupFloatingView() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -89,7 +97,13 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
             setViewTreeSavedStateRegistryOwner(this@FloatingSpriteService)
 
             setContent {
-                val spriteState = rememberSpriteState(totalFrames = 9, framesPerRow = 3, animationSpeed = 80)
+                var spriteFlip by remember { mutableStateOf<SpriteFlip?>(null) }
+
+                val spriteState = rememberSpriteState(
+                    totalFrames = 9,
+                    framesPerRow = 3,
+                    animationSpeed = 80
+                )
                 val spriteSpec = SpriteSpec(
                     screenWidth = 360f,
                     default = SpriteSheet(
@@ -98,11 +112,19 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
                         imageRes = R.drawable.sprite_normal
                     )
                 )
+
                 LaunchedEffect(Unit) {
                     spriteState.start()
                 }
-                MovingSprite(spriteState, spriteSpec)
+
+                MovingSprite(spriteState, spriteSpec, spriteFlip = spriteFlip)
+
+                // Gán state này ra ngoài scope để service có thể điều khiển
+                FloatingSpriteService.currentFlipUpdater = { newFlip ->
+                    spriteFlip = newFlip
+                }
             }
+
         }
 
         val params = WindowManager.LayoutParams(
@@ -124,44 +146,45 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
         windowManager.addView(floatingView, params)
 
         // 👇 Xử lý kéo / thả / dừng
-//        floatingView.setOnTouchListener { _, event ->
-//            when (event.action) {
-//                MotionEvent.ACTION_DOWN -> {
-//                    isDragging = true
-//                    moveJob?.cancel() // Dừng di chuyển tự động
-//                    Log.d("duonghx","ACTION_DOWN")
-//                    initialX = params.x
-//                    initialY = params.y
-//                    initialTouchX = event.rawX
-//                    initialTouchY = event.rawY
-//                    true
-//                }
-//
-//                MotionEvent.ACTION_MOVE -> {
-//                    Log.d("duonghx","ACTION_MOVE")
-//                    if (isDragging) {
-//                        params.x = (initialX + (event.rawX - initialTouchX)).toInt()
-//                        params.y = (initialY + (event.rawY - initialTouchY)).toInt()
-//                        windowManager.updateViewLayout(floatingView, params)
-//                    }
-//                    true
-//                }
-//
-//                MotionEvent.ACTION_UP -> {
-//                    Log.d("duonghx","ACTION_UP")
-//                    isDragging = false
-//                    // 👇 Khi thả tay: rơi xuống đáy rồi tiếp tục di chuyển
-//                    lifecycleScope.launch {
-//                        fallDown(params)
-//                        animateSpriteWindow(params)
-//                    }
-//                    true
-//                }
-//
-//                else -> false
-//            }
-//        }
-//
+        floatingView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    isDragging = true
+                    moveJob?.cancel() // Dừng di chuyển tự động
+                    Log.d("duonghx","ACTION_DOWN")
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    isDragging = true
+                    Log.d("duonghx","ACTION_MOVE")
+                    if (isDragging) {
+                        params.x = (initialX + (event.rawX - initialTouchX)).toInt()
+                        params.y = (initialY + (event.rawY - initialTouchY)).toInt()
+                        windowManager.updateViewLayout(floatingView, params)
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    Log.d("duonghx","ACTION_UP")
+                    isDragging = false
+                    // 👇 Khi thả tay: rơi xuống đáy rồi tiếp tục di chuyển
+                    lifecycleScope.launch {
+                        fallDown(params)
+                        animateSpriteWindow(params)
+                    }
+                    true
+                }
+
+                else -> false
+            }
+        }
+
 //        // 👉 Bắt đầu chạy tự động
         animateSpriteWindow(params)
     }
@@ -212,19 +235,63 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
         val steps = 60
         val delayPerStep = durationMillis / steps
 
+        val (screenWidth, screenHeight) = getScreenSize(this)
+        val spriteWidth = floatingView.width
+        val spriteHeight = floatingView.height
+
         repeat(steps) { step ->
-            if (isDragging) return // Dừng ngay khi người dùng chạm
+            if (isDragging) return
             val fraction = (step + 1).toFloat() / steps
             val value = start + (distance * fraction).toInt()
             if (axis == "x") params.x = value else params.y = value
+
             try {
                 windowManager.updateViewLayout(floatingView, params)
             } catch (e: Exception) {
                 return
             }
+
+            // 👉 Xác định cạnh
+            val flip = when {
+                params.x <= 0 -> SpriteFlip.Horizontal // cạnh trái
+                params.x >= screenWidth - spriteWidth -> null // cạnh phải (không lật)
+                params.y <= 0 -> SpriteFlip.Both // cạnh trên
+                params.y >= screenHeight - spriteHeight -> SpriteFlip.Horizontal // cạnh dưới
+                else -> null
+            }
+
+            // Cập nhật hướng flip trong Compose
+            currentFlipUpdater?.invoke(flip)
+
             delay(delayPerStep.toLong())
         }
     }
+
+
+//    private suspend fun animateParamTo(
+//        params: WindowManager.LayoutParams,
+//        axis: String,
+//        target: Int,
+//        durationMillis: Int
+//    ) {
+//        val start = if (axis == "x") params.x else params.y
+//        val distance = target - start
+//        val steps = 60
+//        val delayPerStep = durationMillis / steps
+//
+//        repeat(steps) { step ->
+//            if (isDragging) return // Dừng ngay khi người dùng chạm
+//            val fraction = (step + 1).toFloat() / steps
+//            val value = start + (distance * fraction).toInt()
+//            if (axis == "x") params.x = value else params.y = value
+//            try {
+//                windowManager.updateViewLayout(floatingView, params)
+//            } catch (e: Exception) {
+//                return
+//            }
+//            delay(delayPerStep.toLong())
+//        }
+//    }
 
     @Suppress("DEPRECATION")
     private fun getScreenSize(context: Context): Pair<Int, Int> {
