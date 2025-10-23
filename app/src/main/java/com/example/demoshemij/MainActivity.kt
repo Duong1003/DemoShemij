@@ -293,7 +293,6 @@ fun MovingSprite(
 ) {
     SpriteView(
         modifier = modifier,
-            // kích thước nhân vật
         spriteState = spriteState,
         spriteSpec = spriteSpec,
         spriteFlip = spriteFlip

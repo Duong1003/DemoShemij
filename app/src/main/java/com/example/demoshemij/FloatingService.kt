@@ -38,6 +38,7 @@ import com.stevdza_san.sprite.domain.rememberSpriteState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -52,6 +53,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
 
     private var moveJob: Job? = null
     private var isDragging = false
+
     private var initialTouchX = 0f
     private var initialTouchY = 0f
     private var initialX = 0
@@ -120,7 +122,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
                 MovingSprite(spriteState, spriteSpec, spriteFlip = spriteFlip)
 
                 // Gán state này ra ngoài scope để service có thể điều khiển
-                FloatingSpriteService.currentFlipUpdater = { newFlip ->
+                currentFlipUpdater = { newFlip ->
                     spriteFlip = newFlip
                 }
             }
@@ -149,15 +151,16 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
         floatingView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    isDragging = true
-                    moveJob?.cancel() // Dừng di chuyển tự động
                     Log.d("duonghx","ACTION_DOWN")
+                    isDragging = true
+                    moveJob?.cancel() // HỦY ngay khi người dùng chạm
                     initialX = params.x
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     true
                 }
+
 
                 MotionEvent.ACTION_MOVE -> {
                     isDragging = true
@@ -171,6 +174,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
                 }
 
                 MotionEvent.ACTION_UP -> {
+                    moveJob?.cancel()
                     Log.d("duonghx","ACTION_UP")
                     isDragging = false
                     // 👇 Khi thả tay: rơi xuống đáy rồi tiếp tục di chuyển
@@ -196,13 +200,18 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
         val groundY = screenHeight - spriteHeight
 
         while (params.y < groundY) {
+            // 👉 Nếu người dùng bắt đầu kéo lại => dừng ngay
+            if (isDragging) return
+
             params.y += 20
             windowManager.updateViewLayout(floatingView, params)
             delay(10)
         }
+
         params.y = groundY
         windowManager.updateViewLayout(floatingView, params)
     }
+
 
     // 👉 Di chuyển tự động vòng quanh màn hình
     private fun animateSpriteWindow(params: WindowManager.LayoutParams) {
@@ -223,6 +232,59 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
            }
        }
     }
+
+    private suspend fun simulateFlingWithGravity(
+        params: WindowManager.LayoutParams,
+        initialVx: Float,
+        initialVy: Float
+    ) {
+        val (screenWidth, screenHeight) = getScreenSize(this)
+        val spriteWidth = floatingView.width
+        val spriteHeight = floatingView.height
+
+        var vx = initialVx
+        var vy = initialVy
+        val gravity = 0.8f       // lực hút xuống
+        val friction = 0.98f     // ma sát không khí
+
+        while (true) {
+            if (isDragging) return
+
+            params.x += vx.toInt()
+            params.y += vy.toInt()
+
+            // ✅ Áp dụng trọng lực mỗi frame
+            vy += gravity
+
+            // ✅ Giảm tốc dần
+            vx *= friction
+            vy *= friction
+
+            // ✅ Giới hạn trong màn hình
+            if (params.x < 0) {
+                params.x = 0
+                vx = -vx * 0.5f  // bật lại yếu dần
+            }
+            if (params.x > screenWidth - spriteWidth) {
+                params.x = screenWidth - spriteWidth
+                vx = -vx * 0.5f
+            }
+            if (params.y > screenHeight - spriteHeight) {
+                params.y = screenHeight - spriteHeight
+                vy = -vy * 0.3f // bật lại nhẹ khi chạm đất
+                if (abs(vy) < 1f && abs(vx) < 1f) break // gần như dừng hẳn
+            }
+
+            try {
+                windowManager.updateViewLayout(floatingView, params)
+            } catch (e: Exception) {
+                return
+            }
+
+            delay(16) // ~60fps
+        }
+    }
+
 
     private suspend fun animateParamTo(
         params: WindowManager.LayoutParams,
