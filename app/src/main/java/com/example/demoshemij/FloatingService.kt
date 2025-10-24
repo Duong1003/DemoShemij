@@ -86,6 +86,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
 
         startForeground(1, notification)
     }
+
     companion object {
         var currentFlipUpdater: ((SpriteFlip?) -> Unit)? = null
     }
@@ -215,6 +216,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
 
     // 👉 Di chuyển tự động vòng quanh màn hình
     private fun animateSpriteWindow(params: WindowManager.LayoutParams) {
+
        floatingView.post{
            moveJob?.cancel()
            moveJob = lifecycleScope.launch {
@@ -292,6 +294,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
         target: Int,
         durationMillis: Int
     ) {
+//        Log.d("duonghx","animateParamTo1 ${params.x} to ${params.y}")
         val start = if (axis == "x") params.x else params.y
         val distance = target - start
         val steps = 60
@@ -306,7 +309,7 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
             val fraction = (step + 1).toFloat() / steps
             val value = start + (distance * fraction).toInt()
             if (axis == "x") params.x = value else params.y = value
-
+            Log.d("duonghx","animateParamTo1 ${params.x} to ${params.y}")
             try {
                 windowManager.updateViewLayout(floatingView, params)
             } catch (e: Exception) {
