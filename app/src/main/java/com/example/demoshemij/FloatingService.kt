@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.random.Random
 
 class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
 
@@ -191,9 +192,177 @@ class FloatingSpriteService : LifecycleService(), SavedStateRegistryOwner {
         }
 
 //        // 👉 Bắt đầu chạy tự động
-        animateSpriteWindow(params)
+        animateSpriteWindow11(params)
+    }
+    private suspend fun animateParamTo(
+        params: WindowManager.LayoutParams,
+        axis: String,
+        target: Int,
+        durationMillis: Int,
+        isMovingRight: Boolean,
+        onComplete: () -> Unit = {}
+    ) {
+        val start = if (axis == "x") params.x else params.y
+        val distance = target - start
+        val steps = 60
+        val delayPerStep = durationMillis / steps
+
+        val (screenWidth, screenHeight) = getScreenSize(this)
+        val spriteWidth = floatingView.width
+        val spriteHeight = floatingView.height
+
+        repeat(steps) { step ->
+            if (isDragging) return
+            val fraction = (step + 1).toFloat() / steps
+            val value = start + (distance * fraction).toInt()
+            if (axis == "x") params.x = value else params.y = value
+            Log.d("duonghx", "animateParamTo ${params.x} to ${params.y}")
+            try {
+                windowManager.updateViewLayout(floatingView, params)
+            } catch (e: Exception) {
+                return
+            }
+
+            // Cập nhật hướng flip
+            val flip = when {
+                params.x <= 0 -> SpriteFlip.Horizontal // Cạnh trái
+                params.x >= screenWidth - spriteWidth -> null // Cạnh phải
+                params.y <= 0 -> SpriteFlip.Both // Cạnh trên
+                params.y >= screenHeight - spriteHeight -> SpriteFlip.Horizontal // Cạnh dưới
+                else -> if (isMovingRight) null else SpriteFlip.Horizontal
+            }
+
+            currentFlipUpdater?.invoke(flip)
+
+            delay(delayPerStep.toLong())
+        }
+
+        // Gọi hàm onComplete khi hoàn thành
+        onComplete()
     }
 
+    private fun animateSpriteWindow11(params: WindowManager.LayoutParams) {
+        floatingView.post {
+            moveJob?.cancel()
+            moveJob = lifecycleScope.launch {
+                val (screenWidth, screenHeight) = getScreenSize(this@FloatingSpriteService)
+                val spriteWidth = floatingView.width
+                val spriteHeight = floatingView.height
+                val margin = 0
+
+                var isMovingRight = true // Theo dõi hướng di chuyển ngang
+
+                while (!isDragging) {
+                    // Chọn tỷ lệ dựa trên vị trí (cạnh trái, cạnh phải, hoặc ở giữa)
+                    val action = Random.nextInt(100)
+
+                    when {
+                        // Cạnh trái: lên 10%, xuống 85%, nhảy 5%
+                        params.x <= 0 -> {
+                            when {
+                                action < 10 -> { // 0-9: 10% - Di chuyển lên
+                                    val maxUpDistance = params.y - margin // Khoảng cách tối đa có thể đi lên
+                                    if (maxUpDistance > 180) { // Chỉ di chuyển nếu đủ khoảng cách
+                                        val targetY = params.y - Random.nextInt(180, min(200, maxUpDistance)) // Di chuyển lên 180-200px
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    } else if (maxUpDistance > 0) {
+                                        // Nếu khoảng cách nhỏ, di chuyển lên hết khoảng cách còn lại
+                                        val targetY = margin
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    }
+                                }
+                                action < 95 -> { // 10-94: 85% - Di chuyển xuống
+                                    val maxDownDistance = screenHeight - spriteHeight - margin - params.y // Khoảng cách tối đa đi xuống
+                                    if (maxDownDistance > 180) { // Chỉ di chuyển nếu đủ khoảng cách
+                                        val targetY = params.y + Random.nextInt(180, min(200, maxDownDistance)) // Di chuyển xuống 180-200px
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    } else if (maxDownDistance > 0) {
+                                        // Nếu khoảng cách nhỏ, di chuyển xuống hết khoảng cách còn lại
+                                        val targetY = screenHeight - spriteHeight - margin
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    }
+                                }
+                                else -> { // 95-99: 5% - Nhảy sang cạnh đối diện
+                                    val targetX = screenWidth - spriteWidth - margin
+                                    animateParamTo(params, "x", targetX, 2000, isMovingRight) {
+                                        isMovingRight = !isMovingRight // Đổi hướng sau khi nhảy
+                                    }
+                                }
+                            }
+                        }
+                        // Cạnh phải: lên 85%, xuống 10%, nhảy 5%
+                        params.x >= screenWidth - spriteWidth - margin -> {
+                            when {
+                                action < 85 -> { // 0-84: 85% - Di chuyển lên
+                                    val maxUpDistance = params.y - margin // Khoảng cách tối đa có thể đi lên
+                                    if (maxUpDistance > 180) { // Chỉ di chuyển nếu đủ khoảng cách
+                                        val targetY = params.y - Random.nextInt(180, min(200, maxUpDistance)) // Di chuyển lên 180-200px
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    } else if (maxUpDistance > 0) {
+                                        // Nếu khoảng cách nhỏ, di chuyển lên hết khoảng cách còn lại
+                                        val targetY = margin
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    }
+                                }
+                                action < 95 -> { // 85-94: 10% - Di chuyển xuống
+                                    val maxDownDistance = screenHeight - spriteHeight - margin - params.y // Khoảng cách tối đa đi xuống
+                                    if (maxDownDistance > 180) { // Chỉ di chuyển nếu đủ khoảng cách
+                                        val targetY = params.y + Random.nextInt(180, min(200, maxDownDistance)) // Di chuyển xuống 180-200px
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    } else if (maxDownDistance > 0) {
+                                        // Nếu khoảng cách nhỏ, di chuyển xuống hết khoảng cách còn lại
+                                        val targetY = screenHeight - spriteHeight - margin
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    }
+                                }
+                                else -> { // 95-99: 5% - Nhảy sang cạnh đối diện
+                                    val targetX = 0
+                                    animateParamTo(params, "x", targetX, 2000, isMovingRight) {
+                                        isMovingRight = !isMovingRight // Đổi hướng sau khi nhảy
+                                    }
+                                }
+                            }
+                        }
+                        // Ở giữa: giữ tỷ lệ mặc định (lên 10%, xuống 85%, nhảy 5%)
+                        else -> {
+                            when {
+                                action < 10 -> { // 0-9: 10% - Di chuyển lên
+                                    val maxUpDistance = params.y - margin // Khoảng cách tối đa có thể đi lên
+                                    if (maxUpDistance > 180) { // Chỉ di chuyển nếu đủ khoảng cách
+                                        val targetY = params.y - Random.nextInt(180, min(200, maxUpDistance)) // Di chuyển lên 180-200px
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    } else if (maxUpDistance > 0) {
+                                        // Nếu khoảng cách nhỏ, di chuyển lên hết khoảng cách còn lại
+                                        val targetY = margin
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    }
+                                }
+                                action < 95 -> { // 10-94: 85% - Di chuyển xuống
+                                    val maxDownDistance = screenHeight - spriteHeight - margin - params.y // Khoảng cách tối đa đi xuống
+                                    if (maxDownDistance > 180) { // Chỉ di chuyển nếu đủ khoảng cách
+                                        val targetY = params.y + Random.nextInt(180, min(200, maxDownDistance)) // Di chuyển xuống 180-200px
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    } else if (maxDownDistance > 0) {
+                                        // Nếu khoảng cách nhỏ, di chuyển xuống hết khoảng cách còn lại
+                                        val targetY = screenHeight - spriteHeight - margin
+                                        animateParamTo(params, "y", targetY, 2000, isMovingRight)
+                                    }
+                                }
+                                else -> { // 95-99: 5% - Nhảy sang cạnh đối diện
+                                    val targetX = if (isMovingRight) screenWidth - spriteWidth - margin else 0
+                                    animateParamTo(params, "x", targetX, 2000, isMovingRight) {
+                                        isMovingRight = !isMovingRight // Đổi hướng sau khi nhảy
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Thêm độ trễ nhỏ giữa các hành động để tránh di chuyển quá nhanh
+                    delay(100)
+                }
+            }
+        }
+    }
     // 👉 Hàm rơi xuống (gravity effect)
     private suspend fun fallDown(params: WindowManager.LayoutParams) {
         val (_, screenHeight) = getScreenSize(this)
